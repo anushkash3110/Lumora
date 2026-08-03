@@ -1,0 +1,30 @@
+# Node
+node_modules/
+dist/
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+build/
+
+# Coverage
+coverage/
+
+# Go
+backend/bin/
+backend/tmp/
+
+# Misc
+*.exe
