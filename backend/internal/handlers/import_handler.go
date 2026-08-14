@@ -23,7 +23,9 @@ func ImportGoogleSheet(
 
 		var request ImportRequest
 
+		// -----------------------------
 		// Validate request
+		// -----------------------------
 		if err := c.ShouldBindJSON(&request); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "sheetUrl is required",
@@ -31,7 +33,18 @@ func ImportGoogleSheet(
 			return
 		}
 
+		request.SheetURL = strings.TrimSpace(request.SheetURL)
+
+		if request.SheetURL == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "sheetUrl is required",
+			})
+			return
+		}
+
+		// -----------------------------
 		// Fetch Google Sheet
+		// -----------------------------
 		rows, err := services.FetchGoogleSheetRows(request.SheetURL)
 
 		if err != nil {
@@ -41,7 +54,6 @@ func ImportGoogleSheet(
 			return
 		}
 
-		// Need at least headers + one data row
 		if len(rows) < 2 {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "Google Sheet contains no lead data",
@@ -49,22 +61,55 @@ func ImportGoogleSheet(
 			return
 		}
 
-		// First row = headers
+		// -----------------------------
+		// Build header map
+		// -----------------------------
 		headers := rows[0]
 
 		headerIndex := make(map[string]int)
 
 		for i, header := range headers {
-			headerIndex[normalizeHeader(header)] = i
+			normalized := normalizeHeader(header)
+
+			if normalized == "" {
+				continue
+			}
+
+			headerIndex[normalized] = i
+		}
+
+		// -----------------------------
+		// Validate that the sheet has
+		// at least one recognizable
+		// lead/company column.
+		// -----------------------------
+		if !hasAnyHeader(
+			headerIndex,
+			"business potential client",
+			"business",
+			"company",
+			"company name",
+			"business name",
+			"client",
+			"organization",
+			"organisation",
+		) {
+
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Could not find a business/company column in this Google Sheet",
+			})
+			return
 		}
 
 		imported := 0
 		skipped := 0
 
-		// Process rows
+		// -----------------------------
+		// Process every data row
+		// -----------------------------
 		for _, row := range rows[1:] {
 
-			// Ignore completely empty/template rows
+			// Ignore completely empty/template rows.
 			if isEmptyRow(row) {
 				skipped++
 				continue
@@ -74,13 +119,19 @@ func ImportGoogleSheet(
 				row,
 				headerIndex,
 				"business potential client",
+				"business name",
 				"business",
-				"company",
 				"company name",
+				"company",
+				"client",
+				"organization",
+				"organisation",
 			)
 
-			// Business name is required
-			if strings.TrimSpace(company) == "" {
+			company = cleanValue(company)
+
+			// Business name is required.
+			if company == "" {
 				skipped++
 				continue
 			}
@@ -90,6 +141,9 @@ func ImportGoogleSheet(
 					row,
 					headerIndex,
 					"niche",
+					"category",
+					"industry",
+					"business category",
 				),
 
 				CompanyName: company,
@@ -98,6 +152,9 @@ func ImportGoogleSheet(
 					row,
 					headerIndex,
 					"sub niche",
+					"subniche",
+					"subcategory",
+					"sub category",
 				),
 
 				Area: getCell(
@@ -107,6 +164,8 @@ func ImportGoogleSheet(
 					"area",
 					"location",
 					"city",
+					"address",
+					"locality",
 				),
 
 				ContactName: getCell(
@@ -114,6 +173,11 @@ func ImportGoogleSheet(
 					headerIndex,
 					"contact person",
 					"contact name",
+					"contact",
+					"person",
+					"owner",
+					"owner name",
+					"decision maker",
 				),
 
 				Phone: getCell(
@@ -122,6 +186,9 @@ func ImportGoogleSheet(
 					"phone",
 					"phone number",
 					"mobile",
+					"mobile number",
+					"contact number",
+					"telephone",
 				),
 
 				Email: getCell(
@@ -129,6 +196,8 @@ func ImportGoogleSheet(
 					headerIndex,
 					"email",
 					"email id",
+					"email address",
+					"mail",
 				),
 
 				Website: getCell(
@@ -136,6 +205,9 @@ func ImportGoogleSheet(
 					headerIndex,
 					"website",
 					"website url",
+					"website link",
+					"url",
+					"web",
 				),
 
 				Pitch: getCell(
@@ -143,7 +215,10 @@ func ImportGoogleSheet(
 					headerIndex,
 					"what waxa can pitch",
 					"what lumora can pitch",
+					"what can lumora pitch",
 					"pitch",
+					"marketing pitch",
+					"suggested pitch",
 				),
 
 				MailStatus: getCell(
@@ -151,6 +226,8 @@ func ImportGoogleSheet(
 					headerIndex,
 					"mail status",
 					"email status",
+					"email sent",
+					"mail sent",
 				),
 
 				Source: "google_sheet",
@@ -160,31 +237,46 @@ func ImportGoogleSheet(
 				OpportunityScore: 0,
 			}
 
-			// Default mail status
+			// Clean all imported values.
+			lead.Niche = cleanValue(lead.Niche)
+			lead.SubNiche = cleanValue(lead.SubNiche)
+			lead.Area = cleanValue(lead.Area)
+			lead.ContactName = cleanValue(lead.ContactName)
+			lead.Phone = cleanValue(lead.Phone)
+			lead.Email = cleanValue(lead.Email)
+			lead.Website = cleanValue(lead.Website)
+			lead.Pitch = cleanValue(lead.Pitch)
+			lead.MailStatus = cleanValue(lead.MailStatus)
+
+			// Default mail status.
 			if lead.MailStatus == "" {
 				lead.MailStatus = "Not Sent"
 			}
 
-			// CreateLead now returns:
-			// inserted bool
-			// error
+			// -----------------------------
+			// Save lead
+			// -----------------------------
 			inserted, err := repo.CreateLead(lead)
 
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error": "failed to save lead",
-				})
-				return
+				// IMPORTANT:
+				// Do not kill the entire import because
+				// one row failed.
+				skipped++
+				continue
 			}
 
 			if inserted {
 				imported++
 			} else {
-				// Duplicate lead
+				// Duplicate lead.
 				skipped++
 			}
 		}
 
+		// -----------------------------
+		// Final response
+		// -----------------------------
 		c.JSON(http.StatusOK, gin.H{
 			"message":  "Google Sheet imported successfully",
 			"imported": imported,
@@ -193,7 +285,9 @@ func ImportGoogleSheet(
 	}
 }
 
-// getCell safely gets a value from a row using possible header names.
+// --------------------------------------
+// Get cell using multiple possible headers
+// --------------------------------------
 func getCell(
 	row []string,
 	headers map[string]int,
@@ -208,20 +302,41 @@ func getCell(
 			continue
 		}
 
-		if index >= len(row) {
+		if index < 0 || index >= len(row) {
 			continue
 		}
 
-		return strings.TrimSpace(row[index])
+		value := strings.TrimSpace(row[index])
+
+		if value != "" {
+			return value
+		}
 	}
 
 	return ""
 }
 
-// isEmptyRow identifies completely empty spreadsheet/template rows.
-//
-// Google Sheets may return FALSE/TRUE for checkbox columns
-// even when the actual row contains no lead information.
+// --------------------------------------
+// Check whether at least one known header
+// exists.
+// --------------------------------------
+func hasAnyHeader(
+	headers map[string]int,
+	keys ...string,
+) bool {
+
+	for _, key := range keys {
+		if _, exists := headers[normalizeHeader(key)]; exists {
+			return true
+		}
+	}
+
+	return false
+}
+
+// --------------------------------------
+// Detect completely empty/template rows
+// --------------------------------------
 func isEmptyRow(row []string) bool {
 
 	for _, value := range row {
@@ -232,7 +347,9 @@ func isEmptyRow(row []string) bool {
 			continue
 		}
 
-		if value == "FALSE" || value == "TRUE" {
+		// Ignore checkbox/template values.
+		if strings.EqualFold(value, "FALSE") ||
+			strings.EqualFold(value, "TRUE") {
 			continue
 		}
 
@@ -242,16 +359,38 @@ func isEmptyRow(row []string) bool {
 	return true
 }
 
-// normalizeHeader makes different header formats comparable.
-//
-// Example:
-// "Area, Bhopal"
-// "Area Bhopal"
-// "area_bhopal"
-// "AREA-BHOPAL"
-//
-// all become:
-// "area bhopal"
+// --------------------------------------
+// Clean imported values
+// --------------------------------------
+func cleanValue(value string) string {
+
+	value = strings.TrimSpace(value)
+
+	if value == "" {
+		return ""
+	}
+
+	// Treat common spreadsheet placeholders as empty.
+	switch strings.ToLower(value) {
+	case "null":
+		return ""
+
+	case "n/a":
+		return ""
+
+	case "na":
+		return ""
+
+	case "-":
+		return ""
+	}
+
+	return value
+}
+
+// --------------------------------------
+// Normalize spreadsheet headers
+// --------------------------------------
 func normalizeHeader(value string) string {
 
 	value = strings.TrimSpace(value)
@@ -261,6 +400,7 @@ func normalizeHeader(value string) string {
 	value = strings.ReplaceAll(value, "_", " ")
 	value = strings.ReplaceAll(value, "-", " ")
 	value = strings.ReplaceAll(value, ",", " ")
+	value = strings.ReplaceAll(value, ".", " ")
 
 	return strings.Join(strings.Fields(value), " ")
 }

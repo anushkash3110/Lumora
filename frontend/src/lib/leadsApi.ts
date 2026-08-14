@@ -19,6 +19,12 @@ interface LeadsResponse {
   leads: Lead[];
 }
 
+interface ImportResponse {
+  message: string;
+  imported: number;
+  skipped: number;
+}
+
 const API_URL = "http://localhost:8080";
 
 export async function getLeads(): Promise<Lead[]> {
@@ -30,10 +36,36 @@ export async function getLeads(): Promise<Lead[]> {
 
   const data: LeadsResponse | Lead[] = await response.json();
 
-  // Supports either { leads: [...] } or [...]
   if (Array.isArray(data)) {
     return data;
   }
 
   return data.leads ?? [];
+}
+
+export async function importGoogleSheet(
+  sheetUrl: string
+): Promise<ImportResponse> {
+  const response = await fetch(
+    `${API_URL}/api/import/google-sheet`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sheetUrl,
+      }),
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data?.error || "Failed to import Google Sheet"
+    );
+  }
+
+  return data;
 }

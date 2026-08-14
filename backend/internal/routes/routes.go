@@ -2,6 +2,7 @@ package routes
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 
 	"github.com/anushkasharma/lumora/internal/handlers"
@@ -10,34 +11,32 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func RegisterRoutes(
-	router *gin.Engine,
-	db *sql.DB,
-) {
+func RegisterRoutes(router *gin.Engine, db *sql.DB) {
+	// Create repository using the existing database connection.
+	leadRepo := repository.NewLeadRepository(db)
 
-	leadRepository := repository.NewLeadRepository(db)
-
+	// Health check
 	router.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"status":  "ok",
 			"message": "Lumora backend is running",
 		})
 	})
 
-	api := router.Group("/api")
-
-	api.POST(
-		"/import/google-sheet",
-		handlers.ImportGoogleSheet(leadRepository),
+	// Google Sheet import
+	router.POST(
+		"/api/import/google-sheet",
+		handlers.ImportGoogleSheet(leadRepo),
 	)
 
-	api.GET("/leads", func(c *gin.Context) {
-
-		leads, err := leadRepository.GetAllLeads()
+	// Get all leads
+	router.GET("/api/leads", func(c *gin.Context) {
+		leads, err := leadRepo.GetAllLeads()
 
 		if err != nil {
+			log.Printf("GET /api/leads ERROR: %v", err)
+
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "failed to fetch leads",
+				"error": err.Error(),
 			})
 			return
 		}

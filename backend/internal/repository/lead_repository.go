@@ -94,14 +94,14 @@ func (r *LeadRepository) GetAllLeads() ([]models.Lead, error) {
 			sub_niche,
 			city,
 			contact_name,
-			email,
-			phone,
-			website,
-			pitch,
-			mail_status,
-			source,
-			opportunity_score,
-			status
+			COALESCE(email, ''),
+			COALESCE(phone, ''),
+			COALESCE(website, ''),
+			COALESCE(pitch, ''),
+			COALESCE(mail_status, ''),
+			COALESCE(source, ''),
+			COALESCE(opportunity_score, 0),
+			COALESCE(status, 'new')
 		FROM leads
 		ORDER BY id DESC
 	`)
@@ -142,5 +142,9 @@ func (r *LeadRepository) GetAllLeads() ([]models.Lead, error) {
 		leads = append(leads, lead)
 	}
 
-	return leads, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return leads, nil
 }
