@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { getLeads, type Lead } from "@/lib/leadsApi";
+import LeadDetails from "./components/LeadDetails";
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
   useEffect(() => {
     async function loadLeads() {
@@ -17,7 +19,9 @@ export default function LeadsPage() {
         setLeads(data);
       } catch (err) {
         console.error(err);
-        setError("Unable to load leads. Make sure the backend is running.");
+        setError(
+          "Unable to load leads. Make sure the backend is running."
+        );
       } finally {
         setLoading(false);
       }
@@ -214,7 +218,8 @@ export default function LeadsPage() {
 
                   <tr
                     key={lead.id}
-                    className="transition hover:bg-[#F8FAFC]"
+                    onClick={() => setSelectedLead(lead)}
+                    className="cursor-pointer transition hover:bg-[#F8FAFC]"
                   >
 
                     <td className="px-5 py-4">
@@ -248,6 +253,7 @@ export default function LeadsPage() {
                       {lead.email ? (
                         <a
                           href={`mailto:${lead.email}`}
+                          onClick={(event) => event.stopPropagation()}
                           className="text-sm text-[#2563EB] hover:underline"
                         >
                           {lead.email}
@@ -271,6 +277,7 @@ export default function LeadsPage() {
                           }
                           target="_blank"
                           rel="noreferrer"
+                          onClick={(event) => event.stopPropagation()}
                           className="text-sm text-[#2563EB] hover:underline"
                         >
                           Visit
@@ -325,6 +332,12 @@ export default function LeadsPage() {
           Showing {filteredLeads.length} of {leads.length} leads
         </div>
       )}
+
+      {/* LEAD DETAILS PANEL */}
+      <LeadDetails
+        lead={selectedLead}
+        onClose={() => setSelectedLead(null)}
+      />
 
     </div>
   );
