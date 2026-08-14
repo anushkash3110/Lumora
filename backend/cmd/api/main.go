@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/anushkasharma/lumora/internal/config"
+	"github.com/anushkasharma/lumora/internal/middleware"
 	"github.com/anushkasharma/lumora/internal/routes"
 
 	"github.com/gin-gonic/gin"
@@ -22,6 +23,8 @@ func main() {
 	defer db.Close()
 
 	router := gin.Default()
+
+	router.Use(middleware.CORS())
 
 	routes.RegisterRoutes(router, db)
 
