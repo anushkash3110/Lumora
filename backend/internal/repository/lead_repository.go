@@ -2,6 +2,7 @@ package repository
 
 import (
 	"database/sql"
+	"strings"
 
 	"github.com/anushkasharma/lumora/internal/models"
 )
@@ -147,4 +148,42 @@ func (r *LeadRepository) GetAllLeads() ([]models.Lead, error) {
 	}
 
 	return leads, nil
+}
+
+// UpdateLeadStatus updates the CRM status of a lead.
+func (r *LeadRepository) UpdateLeadStatus(
+	id int,
+	status string,
+) error {
+
+	status = strings.ToLower(strings.TrimSpace(status))
+
+	// Only allow statuses used by the Lumora pipeline.
+	switch status {
+	case "new", "contacted", "interested", "converted", "lost":
+		// valid
+	default:
+		return sql.ErrNoRows
+	}
+
+	result, err := r.DB.Exec(`
+		UPDATE leads
+		SET status = $1
+		WHERE id = $2
+	`, status, id)
+
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }
