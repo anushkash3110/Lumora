@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/anushkasharma/lumora/internal/models"
+	"github.com/anushkasharma/lumora/internal/services"
 )
 
 type LeadRepository struct {
@@ -19,10 +20,18 @@ func NewLeadRepository(db *sql.DB) *LeadRepository {
 
 // CreateLead inserts a lead into PostgreSQL.
 //
+// The opportunity score is calculated automatically before insertion.
+//
 // Returns:
 // true  -> new lead inserted
 // false -> duplicate lead, so it was ignored
-func (r *LeadRepository) CreateLead(lead models.Lead) (bool, error) {
+func (r *LeadRepository) CreateLead(
+	lead models.Lead,
+) (bool, error) {
+
+	// Calculate the score automatically.
+	lead.OpportunityScore =
+		services.CalculateOpportunityScore(lead)
 
 	result, err := r.DB.Exec(`
 		INSERT INTO leads (
@@ -156,11 +165,16 @@ func (r *LeadRepository) UpdateLeadStatus(
 	status string,
 ) error {
 
-	status = strings.ToLower(strings.TrimSpace(status))
+	status = strings.ToLower(
+		strings.TrimSpace(status),
+	)
 
-	// Only allow statuses used by the Lumora pipeline.
 	switch status {
-	case "new", "contacted", "interested", "converted", "lost":
+	case "new",
+		"contacted",
+		"interested",
+		"converted",
+		"lost":
 		// valid
 	default:
 		return sql.ErrNoRows
@@ -177,6 +191,7 @@ func (r *LeadRepository) UpdateLeadStatus(
 	}
 
 	rowsAffected, err := result.RowsAffected()
+
 	if err != nil {
 		return err
 	}
@@ -186,4 +201,182 @@ func (r *LeadRepository) UpdateLeadStatus(
 	}
 
 	return nil
+}
+
+// RecalculateAllOpportunityScores recalculates the score
+// of every existing lead.
+//
+// This is useful once after introducing the scoring system
+// because older leads may currently have a score of 0.
+func (r *LeadRepository) RecalculateAllOpportunityScores() (
+	int,
+	error,
+) {
+
+	rows, err := r.DB.Query(`
+		SELECT
+			id,
+			category,
+			company_name,
+			sub_niche,
+			city,
+			contact_name,
+			COALESCE(email, ''),
+			COALESCE(phone, ''),
+			COALESCE(website, ''),
+			COALESCE(pitch, ''),
+			COALESCE(mail_status, ''),
+			COALESCE(source, ''),
+			COALESCE(status, 'new')
+		FROM leads
+	`)
+
+	if err != nil {
+		return 0, err
+	}
+
+	defer rows.Close()
+
+	type leadScoreUpdate struct {
+		ID    int64
+		Score int
+	}
+
+	updates := []leadScoreUpdate{}
+
+	for rows.Next() {
+
+		var lead models.Lead
+
+		err := rows.Scan(
+			&lead.ID,
+			&lead.Niche,
+			&lead.CompanyName,
+			&lead.SubNiche,
+			&lead.Area,
+			&lead.ContactName,
+			&lead.Email,
+			&lead.Phone,
+			&lead.Website,
+			&lead.Pitch,
+			&lead.MailStatus,
+			&lead.Source,
+			&lead.Status,
+		)
+
+		if err != nil {
+			return 0, err
+		}
+
+		score :=
+			services.CalculateOpportunityScore(
+				lead,
+			)
+
+		updates = append(
+			updates,
+			leadScoreUpdate{
+				ID:    lead.ID,
+				Score: score,
+			},
+		)
+	}
+
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	updated := 0
+
+	for _, item := range updates {
+
+		result, err := r.DB.Exec(`
+			UPDATE leads
+			SET opportunity_score = $1
+			WHERE id = $2
+		`,
+			item.Score,
+			item.ID,
+		)
+
+		if err != nil {
+			return updated, err
+		}
+
+		count, err := result.RowsAffected()
+
+		if err != nil {
+			return updated, err
+		}
+
+		updated += int(count)
+	}
+
+	return updated, nil
+}
+
+// UpdateLeadScore recalculates and saves the score
+// for one specific lead.
+func (r *LeadRepository) UpdateLeadScore(
+	id int64,
+) (int, error) {
+
+	var lead models.Lead
+
+	err := r.DB.QueryRow(`
+		SELECT
+			id,
+			category,
+			company_name,
+			sub_niche,
+			city,
+			contact_name,
+			COALESCE(email, ''),
+			COALESCE(phone, ''),
+			COALESCE(website, ''),
+			COALESCE(pitch, ''),
+			COALESCE(mail_status, ''),
+			COALESCE(source, ''),
+			COALESCE(status, 'new')
+		FROM leads
+		WHERE id = $1
+	`, id).Scan(
+		&lead.ID,
+		&lead.Niche,
+		&lead.CompanyName,
+		&lead.SubNiche,
+		&lead.Area,
+		&lead.ContactName,
+		&lead.Email,
+		&lead.Phone,
+		&lead.Website,
+		&lead.Pitch,
+		&lead.MailStatus,
+		&lead.Source,
+		&lead.Status,
+	)
+
+	if err != nil {
+		return 0, err
+	}
+
+	score :=
+		services.CalculateOpportunityScore(
+			lead,
+		)
+
+	_, err = r.DB.Exec(`
+		UPDATE leads
+		SET opportunity_score = $1
+		WHERE id = $2
+	`,
+		score,
+		id,
+	)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return score, nil
 }
