@@ -15,4 +15,6 @@ type Lead struct {
 	Source           string `json:"source"`
 	OpportunityScore int    `json:"opportunityScore"`
 	Status           string `json:"status"`
+	Notes            string `json:"notes"`
+	FollowUpDate     string `json:"followUpDate"`
 }

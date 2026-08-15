@@ -14,6 +14,19 @@ import {
 import LeadDetails from "./components/LeadDetails";
 import LeadPipeline from "./components/LeadPipeline";
 
+type FollowUpFilter =
+  | "all"
+  | "today"
+  | "overdue"
+  | "upcoming"
+  | "none";
+
+type FollowUpStatus =
+  | "none"
+  | "overdue"
+  | "today"
+  | "upcoming";
+
 export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [search, setSearch] = useState("");
@@ -29,6 +42,12 @@ export default function LeadsPage() {
 
   const [phoneFilter, setPhoneFilter] =
     useState("all");
+
+  const [scoreFilter, setScoreFilter] =
+    useState("all");
+
+  const [followUpFilter, setFollowUpFilter] =
+    useState<FollowUpFilter>("all");
 
   const [viewMode, setViewMode] = useState<
     "table" | "pipeline"
@@ -172,6 +191,39 @@ export default function LeadsPage() {
   }
 
   // --------------------------------------------------
+  // NOTES + FOLLOW-UP UPDATED
+  // --------------------------------------------------
+
+  function handleDetailsUpdated(
+    leadId: number,
+    notes: string,
+    followUpDate: string
+  ): void {
+    setLeads((currentLeads) =>
+      currentLeads.map((lead) =>
+        lead.id === leadId
+          ? {
+              ...lead,
+              notes,
+              followUpDate,
+            }
+          : lead
+      )
+    );
+
+    setSelectedLead((currentLead) =>
+      currentLead &&
+      currentLead.id === leadId
+        ? {
+            ...currentLead,
+            notes,
+            followUpDate,
+          }
+        : currentLead
+    );
+  }
+
+  // --------------------------------------------------
   // CATEGORIES
   // --------------------------------------------------
 
@@ -196,6 +248,165 @@ export default function LeadsPage() {
   }, [leads]);
 
   // --------------------------------------------------
+  // SCORE HELPERS
+  // --------------------------------------------------
+
+  function getScoreLevel(
+    score: number
+  ): "high" | "medium" | "low" {
+    if (score >= 80) {
+      return "high";
+    }
+
+    if (score >= 50) {
+      return "medium";
+    }
+
+    return "low";
+  }
+
+  function getScoreLabel(
+    score: number
+  ): string {
+    const level =
+      getScoreLevel(score);
+
+    if (level === "high") {
+      return "High";
+    }
+
+    if (level === "medium") {
+      return "Medium";
+    }
+
+    return "Low";
+  }
+
+  function getScoreClasses(
+    score: number
+  ): string {
+    const level =
+      getScoreLevel(score);
+
+    if (level === "high") {
+      return "bg-red-50 text-red-700";
+    }
+
+    if (level === "medium") {
+      return "bg-amber-50 text-amber-700";
+    }
+
+    return "bg-slate-100 text-slate-600";
+  }
+
+  // --------------------------------------------------
+  // DATE HELPERS
+  // --------------------------------------------------
+
+  function getTodayDate(): string {
+    const today = new Date();
+
+    const year = today.getFullYear();
+    const month = String(
+      today.getMonth() + 1
+    ).padStart(2, "0");
+    const day = String(
+      today.getDate()
+    ).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  }
+
+  function getFollowUpStatus(
+    followUpDate?: string
+  ): FollowUpStatus {
+    if (!followUpDate?.trim()) {
+      return "none";
+    }
+
+    const today = getTodayDate();
+
+    if (followUpDate < today) {
+      return "overdue";
+    }
+
+    if (followUpDate === today) {
+      return "today";
+    }
+
+    return "upcoming";
+  }
+
+  function getFollowUpLabel(
+    followUpDate?: string
+  ): string {
+    const status =
+      getFollowUpStatus(
+        followUpDate
+      );
+
+    switch (status) {
+      case "overdue":
+        return "Overdue";
+
+      case "today":
+        return "Due Today";
+
+      case "upcoming":
+        return "Upcoming";
+
+      default:
+        return "No Follow-up";
+    }
+  }
+
+  function getFollowUpClasses(
+    followUpDate?: string
+  ): string {
+    const status =
+      getFollowUpStatus(
+        followUpDate
+      );
+
+    switch (status) {
+      case "overdue":
+        return "bg-red-50 text-red-700";
+
+      case "today":
+        return "bg-emerald-50 text-emerald-700";
+
+      case "upcoming":
+        return "bg-blue-50 text-blue-700";
+
+      default:
+        return "bg-slate-100 text-slate-500";
+    }
+  }
+
+  function formatFollowUpDate(
+    followUpDate?: string
+  ): string {
+    if (!followUpDate) {
+      return "—";
+    }
+
+    const parts =
+      followUpDate.split("-");
+
+    if (parts.length !== 3) {
+      return followUpDate;
+    }
+
+    const [
+      year,
+      month,
+      day,
+    ] = parts;
+
+    return `${day}/${month}/${year}`;
+  }
+
+  // --------------------------------------------------
   // FILTER LEADS
   // --------------------------------------------------
 
@@ -213,6 +424,7 @@ export default function LeadsPage() {
         lead.email,
         lead.phone,
         lead.website,
+        lead.notes,
       ]
         .filter(Boolean)
         .join(" ")
@@ -222,9 +434,10 @@ export default function LeadsPage() {
         query === "" ||
         searchableText.includes(query);
 
-      const currentStatus = (
-        lead.status || "new"
-      ).toLowerCase();
+      const currentStatus =
+        (
+          lead.status || "new"
+        ).toLowerCase();
 
       const matchesStatus =
         statusFilter === "all" ||
@@ -255,12 +468,34 @@ export default function LeadsPage() {
         (phoneFilter === "missing" &&
           !hasPhone);
 
+      const score =
+        Number(
+          lead.opportunityScore
+        ) || 0;
+
+      const matchesScore =
+        scoreFilter === "all" ||
+        getScoreLevel(score) ===
+          scoreFilter;
+
+      const currentFollowUpStatus =
+        getFollowUpStatus(
+          lead.followUpDate
+        );
+
+      const matchesFollowUp =
+        followUpFilter === "all" ||
+        currentFollowUpStatus ===
+          followUpFilter;
+
       return (
         matchesSearch &&
         matchesStatus &&
         matchesCategory &&
         matchesEmail &&
-        matchesPhone
+        matchesPhone &&
+        matchesScore &&
+        matchesFollowUp
       );
     });
   }, [
@@ -270,6 +505,8 @@ export default function LeadsPage() {
     categoryFilter,
     emailFilter,
     phoneFilter,
+    scoreFilter,
+    followUpFilter,
   ]);
 
   // --------------------------------------------------
@@ -282,6 +519,8 @@ export default function LeadsPage() {
     setCategoryFilter("all");
     setEmailFilter("all");
     setPhoneFilter("all");
+    setScoreFilter("all");
+    setFollowUpFilter("all");
   }
 
   const filtersActive =
@@ -289,27 +528,40 @@ export default function LeadsPage() {
     statusFilter !== "all" ||
     categoryFilter !== "all" ||
     emailFilter !== "all" ||
-    phoneFilter !== "all";
+    phoneFilter !== "all" ||
+    scoreFilter !== "all" ||
+    followUpFilter !== "all";
 
   // --------------------------------------------------
   // STATS
   // --------------------------------------------------
 
-  const totalLeads = leads.length;
+  const totalLeads =
+    leads.length;
 
-  const emailsAvailable =
+  const highPriorityLeads =
     leads.filter((lead) =>
-      Boolean(lead.email?.trim())
+      getScoreLevel(
+        Number(
+          lead.opportunityScore
+        ) || 0
+      ) === "high"
     ).length;
 
-  const phonesAvailable =
-    leads.filter((lead) =>
-      Boolean(lead.phone?.trim())
+  const dueTodayCount =
+    leads.filter(
+      (lead) =>
+        getFollowUpStatus(
+          lead.followUpDate
+        ) === "today"
     ).length;
 
-  const websitesAvailable =
-    leads.filter((lead) =>
-      Boolean(lead.website?.trim())
+  const overdueCount =
+    leads.filter(
+      (lead) =>
+        getFollowUpStatus(
+          lead.followUpDate
+        ) === "overdue"
     ).length;
 
   // --------------------------------------------------
@@ -336,7 +588,7 @@ export default function LeadsPage() {
 
           <div className="flex flex-wrap items-center gap-3">
 
-            {/* VIEW MODE */}
+            {/* TABLE / PIPELINE */}
 
             <div className="flex items-center rounded-lg border border-[#E2E8F0] bg-white p-1">
 
@@ -400,7 +652,7 @@ export default function LeadsPage() {
         </div>
       </div>
 
-      {/* STATS */}
+      {/* FOLLOW-UP SUMMARY */}
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
 
@@ -410,18 +662,18 @@ export default function LeadsPage() {
         />
 
         <StatCard
-          label="Emails Available"
-          value={emailsAvailable}
+          label="High Priority"
+          value={highPriorityLeads}
         />
 
         <StatCard
-          label="Phone Numbers"
-          value={phonesAvailable}
+          label="Due Today"
+          value={dueTodayCount}
         />
 
         <StatCard
-          label="Websites"
-          value={websitesAvailable}
+          label="Overdue"
+          value={overdueCount}
         />
 
       </div>
@@ -434,13 +686,15 @@ export default function LeadsPage() {
           type="text"
           value={search}
           onChange={(event) =>
-            setSearch(event.target.value)
+            setSearch(
+              event.target.value
+            )
           }
-          placeholder="Search businesses, emails, categories..."
+          placeholder="Search businesses, emails, categories, notes..."
           className="mb-4 w-full rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 text-sm text-[#0F172A] outline-none placeholder:text-[#94A3B8]"
         />
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-6">
 
           {/* STATUS */}
 
@@ -505,6 +759,67 @@ export default function LeadsPage() {
             )}
           </select>
 
+          {/* SCORE */}
+
+          <select
+            value={scoreFilter}
+            onChange={(event) =>
+              setScoreFilter(
+                event.target.value
+              )
+            }
+            className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#475569]"
+          >
+            <option value="all">
+              Score: All
+            </option>
+
+            <option value="high">
+              Score: High
+            </option>
+
+            <option value="medium">
+              Score: Medium
+            </option>
+
+            <option value="low">
+              Score: Low
+            </option>
+          </select>
+
+          {/* FOLLOW-UP */}
+
+          <select
+            value={followUpFilter}
+            onChange={(event) =>
+              setFollowUpFilter(
+                event.target
+                  .value as FollowUpFilter
+              )
+            }
+            className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#475569]"
+          >
+            <option value="all">
+              Follow-up: All
+            </option>
+
+            <option value="today">
+              Due Today
+            </option>
+
+            <option value="overdue">
+              Overdue
+            </option>
+
+            <option value="upcoming">
+              Upcoming
+            </option>
+
+            <option value="none">
+              No Follow-up
+            </option>
+          </select>
+
           {/* EMAIL */}
 
           <select
@@ -555,6 +870,8 @@ export default function LeadsPage() {
 
         </div>
 
+        {/* FILTER FOOTER */}
+
         <div className="mt-4 flex items-center justify-between">
 
           <p className="text-xs text-[#94A3B8]">
@@ -574,6 +891,7 @@ export default function LeadsPage() {
           )}
 
         </div>
+
       </div>
 
       {/* ERROR */}
@@ -599,52 +917,65 @@ export default function LeadsPage() {
       {!loading &&
         !error &&
         viewMode === "table" && (
-          <div className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white">
+          <div className="lumora-scrollbar max-h-[600px] overflow-auto rounded-xl border border-[#E2E8F0] bg-white">
 
-            <div className="overflow-x-auto">
+            <table className="w-full min-w-250 text-left">
 
-              <table className="w-full min-w-250 text-left">
+              <thead className="sticky top-0 z-10 border-b border-[#E2E8F0] bg-[#F8FAFC]">
 
-                <thead className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                <tr>
 
-                  <tr>
+                  <TableHeader>
+                    Business
+                  </TableHeader>
 
-                    <TableHeader>
-                      Business
-                    </TableHeader>
+                  <TableHeader>
+                    Category
+                  </TableHeader>
 
-                    <TableHeader>
-                      Category
-                    </TableHeader>
+                  <TableHeader>
+                    Contact
+                  </TableHeader>
 
-                    <TableHeader>
-                      Contact
-                    </TableHeader>
+                  <TableHeader>
+                    Phone
+                  </TableHeader>
 
-                    <TableHeader>
-                      Phone
-                    </TableHeader>
+                  <TableHeader>
+                    Email
+                  </TableHeader>
 
-                    <TableHeader>
-                      Email
-                    </TableHeader>
+                  <TableHeader>
+                    Score
+                  </TableHeader>
 
-                    <TableHeader>
-                      Website
-                    </TableHeader>
+                  <TableHeader>
+                    Follow-up
+                  </TableHeader>
 
-                    <TableHeader>
-                      Status
-                    </TableHeader>
+                  <TableHeader>
+                    Status
+                  </TableHeader>
 
-                  </tr>
+                </tr>
 
-                </thead>
+              </thead>
 
-                <tbody className="divide-y divide-[#E2E8F0]">
+              <tbody className="divide-y divide-[#E2E8F0]">
 
-                  {filteredLeads.map(
-                    (lead) => (
+                {filteredLeads.map(
+                  (lead) => {
+                    const score =
+                      Number(
+                        lead.opportunityScore
+                      ) || 0;
+
+                    const followUpStatus =
+                      getFollowUpStatus(
+                        lead.followUpDate
+                      );
+
+                    return (
                       <tr
                         key={lead.id}
                         onClick={() =>
@@ -675,7 +1006,8 @@ export default function LeadsPage() {
                         {/* CATEGORY */}
 
                         <td className="px-5 py-4 text-sm text-[#475569]">
-                          {lead.niche || "—"}
+                          {lead.niche ||
+                            "—"}
                         </td>
 
                         {/* CONTACT */}
@@ -688,7 +1020,8 @@ export default function LeadsPage() {
                         {/* PHONE */}
 
                         <td className="px-5 py-4 text-sm text-[#475569]">
-                          {lead.phone || "—"}
+                          {lead.phone ||
+                            "—"}
                         </td>
 
                         {/* EMAIL */}
@@ -715,34 +1048,59 @@ export default function LeadsPage() {
 
                         </td>
 
-                        {/* WEBSITE */}
+                        {/* SCORE */}
 
                         <td className="px-5 py-4">
 
-                          {lead.website ? (
-                            <a
-                              href={
-                                lead.website.startsWith(
-                                  "http"
-                                )
-                                  ? lead.website
-                                  : `https://${lead.website}`
-                              }
-                              target="_blank"
-                              rel="noreferrer"
-                              onClick={(
-                                event
-                              ) =>
-                                event.stopPropagation()
-                              }
-                              className="text-sm text-blue-600 hover:underline"
+                          <div className="flex items-center gap-2">
+
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getScoreClasses(
+                                score
+                              )}`}
                             >
-                              Visit
-                            </a>
-                          ) : (
+                              {score}
+                            </span>
+
+                            <span className="text-xs text-[#94A3B8]">
+                              {getScoreLabel(
+                                score
+                              )}
+                            </span>
+
+                          </div>
+
+                        </td>
+
+                        {/* FOLLOW-UP */}
+
+                        <td className="px-5 py-4">
+
+                          {followUpStatus ===
+                          "none" ? (
                             <span className="text-sm text-[#94A3B8]">
                               —
                             </span>
+                          ) : (
+                            <div className="flex flex-col items-start gap-1">
+
+                              <span
+                                className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${getFollowUpClasses(
+                                  lead.followUpDate
+                                )}`}
+                              >
+                                {getFollowUpLabel(
+                                  lead.followUpDate
+                                )}
+                              </span>
+
+                              <span className="text-xs text-[#64748B]">
+                                {formatFollowUpDate(
+                                  lead.followUpDate
+                                )}
+                              </span>
+
+                            </div>
                           )}
 
                         </td>
@@ -759,14 +1117,13 @@ export default function LeadsPage() {
                         </td>
 
                       </tr>
-                    )
-                  )}
+                    );
+                  }
+                )}
 
-                </tbody>
+              </tbody>
 
-              </table>
-
-            </div>
+            </table>
 
             {filteredLeads.length ===
               0 && (
@@ -814,6 +1171,9 @@ export default function LeadsPage() {
         }
         onStatusUpdated={
           handleStatusUpdated
+        }
+        onDetailsUpdated={
+          handleDetailsUpdated
         }
       />
 
@@ -870,6 +1230,10 @@ export default function LeadsPage() {
                   className="w-full rounded-lg border border-[#CBD5E1] px-4 py-3 text-sm outline-none"
                 />
 
+                <p className="mt-2 text-xs text-[#94A3B8]">
+                  Make sure the Google Sheet is accessible to the importer.
+                </p>
+
               </div>
 
               {importMessage && (
@@ -912,6 +1276,7 @@ export default function LeadsPage() {
               </div>
 
             </div>
+
           </div>
         </div>
       )}

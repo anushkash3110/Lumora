@@ -26,7 +26,8 @@ func RegisterRoutes(
 
 	router.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"message": "Lumora backend is running",
+			"message":
+				"Lumora backend is running",
 		})
 	})
 
@@ -61,7 +62,8 @@ func RegisterRoutes(
 				c.JSON(
 					http.StatusInternalServerError,
 					gin.H{
-						"error": "failed to fetch leads",
+						"error":
+							"failed to fetch leads",
 					},
 				)
 
@@ -97,7 +99,8 @@ func RegisterRoutes(
 				c.JSON(
 					http.StatusBadRequest,
 					gin.H{
-						"error": "invalid lead id",
+						"error":
+							"invalid lead id",
 					},
 				)
 
@@ -109,12 +112,14 @@ func RegisterRoutes(
 			}
 
 			if err :=
-				c.ShouldBindJSON(&request); err != nil {
+				c.ShouldBindJSON(&request);
+				err != nil {
 
 				c.JSON(
 					http.StatusBadRequest,
 					gin.H{
-						"error": "status is required",
+						"error":
+							"status is required",
 					},
 				)
 
@@ -134,14 +139,13 @@ func RegisterRoutes(
 				"interested",
 				"converted",
 				"lost":
-				// valid
-
 			default:
 
 				c.JSON(
 					http.StatusBadRequest,
 					gin.H{
-						"error": "invalid status",
+						"error":
+							"invalid status",
 					},
 				)
 
@@ -162,7 +166,8 @@ func RegisterRoutes(
 					c.JSON(
 						http.StatusNotFound,
 						gin.H{
-							"error": "lead not found",
+							"error":
+								"lead not found",
 						},
 					)
 
@@ -178,7 +183,8 @@ func RegisterRoutes(
 				c.JSON(
 					http.StatusInternalServerError,
 					gin.H{
-						"error": "failed to update lead status",
+						"error":
+							"failed to update lead status",
 					},
 				)
 
@@ -188,8 +194,107 @@ func RegisterRoutes(
 			c.JSON(
 				http.StatusOK,
 				gin.H{
-					"message": "Lead status updated successfully",
-					"status":  status,
+					"message":
+						"Lead status updated successfully",
+					"status": status,
+				},
+			)
+		},
+	)
+
+	// --------------------------------------------------
+	// UPDATE NOTES + FOLLOW-UP
+	// --------------------------------------------------
+
+	router.PATCH(
+		"/api/leads/:id/details",
+		func(c *gin.Context) {
+
+			id, err :=
+				strconv.ParseInt(
+					c.Param("id"),
+					10,
+					64,
+				)
+
+			if err != nil {
+
+				c.JSON(
+					http.StatusBadRequest,
+					gin.H{
+						"error":
+							"invalid lead id",
+					},
+				)
+
+				return
+			}
+
+			var request struct {
+				Notes        string `json:"notes"`
+				FollowUpDate string `json:"followUpDate"`
+			}
+
+			if err :=
+				c.ShouldBindJSON(&request);
+				err != nil {
+
+				c.JSON(
+					http.StatusBadRequest,
+					gin.H{
+						"error":
+							"invalid request",
+					},
+				)
+
+				return
+			}
+
+			err =
+				leadRepo.UpdateLeadDetails(
+					id,
+					request.Notes,
+					request.FollowUpDate,
+				)
+
+			if err != nil {
+
+				if err ==
+					sql.ErrNoRows {
+
+					c.JSON(
+						http.StatusNotFound,
+						gin.H{
+							"error":
+								"lead not found",
+						},
+					)
+
+					return
+				}
+
+				log.Printf(
+					"PATCH /api/leads/%d/details ERROR: %v",
+					id,
+					err,
+				)
+
+				c.JSON(
+					http.StatusInternalServerError,
+					gin.H{
+						"error":
+							"failed to update lead details",
+					},
+				)
+
+				return
+			}
+
+			c.JSON(
+				http.StatusOK,
+				gin.H{
+					"message":
+						"Lead details updated successfully",
 				},
 			)
 		},
@@ -217,7 +322,8 @@ func RegisterRoutes(
 				c.JSON(
 					http.StatusInternalServerError,
 					gin.H{
-						"error": "failed to recalculate lead scores",
+						"error":
+							"failed to recalculate lead scores",
 					},
 				)
 
@@ -227,8 +333,10 @@ func RegisterRoutes(
 			c.JSON(
 				http.StatusOK,
 				gin.H{
-					"message": "Lead scores recalculated successfully",
-					"updated": updated,
+					"message":
+						"Lead scores recalculated successfully",
+					"updated":
+						updated,
 				},
 			)
 		},
@@ -254,7 +362,8 @@ func RegisterRoutes(
 				c.JSON(
 					http.StatusBadRequest,
 					gin.H{
-						"error": "invalid lead id",
+						"error":
+							"invalid lead id",
 					},
 				)
 
@@ -272,7 +381,8 @@ func RegisterRoutes(
 					c.JSON(
 						http.StatusNotFound,
 						gin.H{
-							"error": "lead not found",
+							"error":
+								"lead not found",
 						},
 					)
 
@@ -288,7 +398,8 @@ func RegisterRoutes(
 				c.JSON(
 					http.StatusInternalServerError,
 					gin.H{
-						"error": "failed to calculate lead score",
+						"error":
+							"failed to calculate lead score",
 					},
 				)
 
@@ -300,7 +411,6 @@ func RegisterRoutes(
 			switch {
 			case score >= 80:
 				level = "high"
-
 			case score >= 50:
 				level = "medium"
 			}
@@ -308,9 +418,10 @@ func RegisterRoutes(
 			c.JSON(
 				http.StatusOK,
 				gin.H{
-					"message": "Lead score calculated successfully",
-					"score":   score,
-					"level":   level,
+					"message":
+						"Lead score calculated successfully",
+					"score": score,
+					"level": level,
 				},
 			)
 		},

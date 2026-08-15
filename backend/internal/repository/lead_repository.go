@@ -29,7 +29,6 @@ func (r *LeadRepository) CreateLead(
 	lead models.Lead,
 ) (bool, error) {
 
-	// Calculate the score automatically.
 	lead.OpportunityScore =
 		services.CalculateOpportunityScore(lead)
 
@@ -111,7 +110,12 @@ func (r *LeadRepository) GetAllLeads() ([]models.Lead, error) {
 			COALESCE(mail_status, ''),
 			COALESCE(source, ''),
 			COALESCE(opportunity_score, 0),
-			COALESCE(status, 'new')
+			COALESCE(status, 'new'),
+			COALESCE(notes, ''),
+			COALESCE(
+				TO_CHAR(follow_up_date, 'YYYY-MM-DD'),
+				''
+			)
 		FROM leads
 		ORDER BY id DESC
 	`)
@@ -143,6 +147,8 @@ func (r *LeadRepository) GetAllLeads() ([]models.Lead, error) {
 			&lead.Source,
 			&lead.OpportunityScore,
 			&lead.Status,
+			&lead.Notes,
+			&lead.FollowUpDate,
 		)
 
 		if err != nil {
@@ -175,14 +181,15 @@ func (r *LeadRepository) UpdateLeadStatus(
 		"interested",
 		"converted",
 		"lost":
-		// valid
 	default:
 		return sql.ErrNoRows
 	}
 
 	result, err := r.DB.Exec(`
 		UPDATE leads
-		SET status = $1
+		SET
+			status = $1,
+			updated_at = NOW()
 		WHERE id = $2
 	`, status, id)
 
@@ -203,11 +210,65 @@ func (r *LeadRepository) UpdateLeadStatus(
 	return nil
 }
 
+// UpdateLeadDetails updates notes and follow-up date.
+func (r *LeadRepository) UpdateLeadDetails(
+	id int64,
+	notes string,
+	followUpDate string,
+) error {
+
+	notes = strings.TrimSpace(notes)
+	followUpDate = strings.TrimSpace(followUpDate)
+
+	var result sql.Result
+	var err error
+
+	if followUpDate == "" {
+		result, err = r.DB.Exec(`
+			UPDATE leads
+			SET
+				notes = $1,
+				follow_up_date = NULL,
+				updated_at = NOW()
+			WHERE id = $2
+		`,
+			notes,
+			id,
+		)
+	} else {
+		result, err = r.DB.Exec(`
+			UPDATE leads
+			SET
+				notes = $1,
+				follow_up_date = $2::date,
+				updated_at = NOW()
+			WHERE id = $3
+		`,
+			notes,
+			followUpDate,
+			id,
+		)
+	}
+
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
 // RecalculateAllOpportunityScores recalculates the score
 // of every existing lead.
-//
-// This is useful once after introducing the scoring system
-// because older leads may currently have a score of 0.
 func (r *LeadRepository) RecalculateAllOpportunityScores() (
 	int,
 	error,
@@ -292,7 +353,9 @@ func (r *LeadRepository) RecalculateAllOpportunityScores() (
 
 		result, err := r.DB.Exec(`
 			UPDATE leads
-			SET opportunity_score = $1
+			SET
+				opportunity_score = $1,
+				updated_at = NOW()
 			WHERE id = $2
 		`,
 			item.Score,
@@ -367,7 +430,9 @@ func (r *LeadRepository) UpdateLeadScore(
 
 	_, err = r.DB.Exec(`
 		UPDATE leads
-		SET opportunity_score = $1
+		SET
+			opportunity_score = $1,
+			updated_at = NOW()
 		WHERE id = $2
 	`,
 		score,

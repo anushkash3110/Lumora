@@ -1,4 +1,8 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import {
+  Navigate,
+  Route,
+  Routes,
+} from "react-router-dom";
 
 import DashboardPage from "@/features/dashboard/DashboardPage";
 import LeadsPage from "@/features/leads/LeadsPage";
@@ -6,14 +10,25 @@ import LeadsPage from "@/features/leads/LeadsPage";
 export default function AppRoutes() {
   return (
     <Routes>
-      {/* Dashboard */}
-      <Route path="/" element={<DashboardPage />} />
+      <Route
+        path="/"
+        element={<DashboardPage />}
+      />
 
-      {/* Leads */}
-      <Route path="/leads" element={<LeadsPage />} />
+      <Route
+        path="/leads"
+        element={<LeadsPage />}
+      />
 
-      {/* Unknown route */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route
+        path="*"
+        element={
+          <Navigate
+            to="/"
+            replace
+          />
+        }
+      />
     </Routes>
   );
 }

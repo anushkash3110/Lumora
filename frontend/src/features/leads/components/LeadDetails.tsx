@@ -1,5 +1,9 @@
 import { useState } from "react";
-import type { Lead } from "@/lib/leadsApi";
+
+import {
+  type Lead,
+  updateLeadDetails,
+} from "@/lib/leadsApi";
 
 interface LeadDetailsProps {
   lead: Lead | null;
@@ -7,6 +11,11 @@ interface LeadDetailsProps {
   onStatusUpdated?: (
     leadId: number,
     newStatus: string
+  ) => void;
+  onDetailsUpdated?: (
+    leadId: number,
+    notes: string,
+    followUpDate: string
   ) => void;
 }
 
@@ -18,10 +27,39 @@ const STATUS_OPTIONS = [
   "lost",
 ];
 
+function getScoreLabel(
+  score: number
+): string {
+  if (score >= 80) {
+    return "High";
+  }
+
+  if (score >= 50) {
+    return "Medium";
+  }
+
+  return "Low";
+}
+
+function getScoreClasses(
+  score: number
+): string {
+  if (score >= 80) {
+    return "bg-red-50 text-red-700";
+  }
+
+  if (score >= 50) {
+    return "bg-amber-50 text-amber-700";
+  }
+
+  return "bg-slate-100 text-slate-600";
+}
+
 export default function LeadDetails({
   lead,
   onClose,
   onStatusUpdated,
+  onDetailsUpdated,
 }: LeadDetailsProps) {
   const [savingStatus, setSavingStatus] =
     useState(false);
@@ -29,12 +67,32 @@ export default function LeadDetails({
   const [statusError, setStatusError] =
     useState("");
 
+  const [notes, setNotes] =
+    useState("");
+
+  const [followUpDate, setFollowUpDate] =
+    useState("");
+
+  const [savingDetails, setSavingDetails] =
+    useState(false);
+
+  const [detailsMessage, setDetailsMessage] =
+    useState("");
+
+  const [detailsError, setDetailsError] =
+    useState("");
+
   if (lead === null) {
     return null;
   }
 
   const leadId = lead.id;
-  const currentStatus = lead.status || "new";
+
+  const currentStatus =
+    lead.status || "new";
+
+  const score =
+    Number(lead.opportunityScore) || 0;
 
   async function handleStatusChange(
     newStatus: string
@@ -48,7 +106,8 @@ export default function LeadDetails({
         {
           method: "PATCH",
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json",
           },
           body: JSON.stringify({
             status: newStatus,
@@ -57,30 +116,17 @@ export default function LeadDetails({
       );
 
       if (!response.ok) {
-        let message =
-          "Failed to update status.";
+        const message =
+          await response.json().catch(
+            () => null
+          );
 
-        try {
-          const data = await response.json();
-
-          if (
-            data &&
-            typeof data.error === "string"
-          ) {
-            message = data.error;
-          }
-        } catch {
-          // Ignore JSON parsing errors.
-        }
-
-        throw new Error(message);
+        throw new Error(
+          message?.error ||
+            "Failed to update status."
+        );
       }
 
-      /*
-       * The parent component owns the lead state.
-       * Updating it here makes the table,
-       * pipeline and details panel stay in sync.
-       */
       onStatusUpdated?.(
         leadId,
         newStatus
@@ -101,6 +147,43 @@ export default function LeadDetails({
     }
   }
 
+  async function handleSaveDetails(): Promise<void> {
+    try {
+      setSavingDetails(true);
+      setDetailsError("");
+      setDetailsMessage("");
+
+      await updateLeadDetails(
+        leadId,
+        notes,
+        followUpDate
+      );
+
+      onDetailsUpdated?.(
+        leadId,
+        notes,
+        followUpDate
+      );
+
+      setDetailsMessage(
+        "Notes and follow-up saved."
+      );
+    } catch (error) {
+      console.error(
+        "Failed to save lead details:",
+        error
+      );
+
+      setDetailsError(
+        error instanceof Error
+          ? error.message
+          : "Failed to save lead details."
+      );
+    } finally {
+      setSavingDetails(false);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/20">
 
@@ -111,6 +194,7 @@ export default function LeadDetails({
         <div className="sticky top-0 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-5">
 
           <div>
+
             <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
               Lead Details
             </p>
@@ -119,6 +203,7 @@ export default function LeadDetails({
               {lead.companyName ||
                 "Unnamed Business"}
             </h2>
+
           </div>
 
           <button
@@ -132,6 +217,32 @@ export default function LeadDetails({
         </div>
 
         <div className="space-y-6 p-6">
+
+          {/* SCORE */}
+
+          <section>
+
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+              Opportunity Score
+            </p>
+
+            <div className="flex items-center gap-3">
+
+              <span
+                className={`inline-flex rounded-full px-3 py-1.5 text-sm font-semibold ${getScoreClasses(
+                  score
+                )}`}
+              >
+                {score}
+              </span>
+
+              <span className="text-sm font-medium text-slate-600">
+                {getScoreLabel(score)} opportunity
+              </span>
+
+            </div>
+
+          </section>
 
           {/* STATUS */}
 
@@ -153,12 +264,12 @@ export default function LeadDetails({
             >
 
               {STATUS_OPTIONS.map(
-                (statusOption) => (
+                (option) => (
                   <option
-                    key={statusOption}
-                    value={statusOption}
+                    key={option}
+                    value={option}
                   >
-                    {statusOption}
+                    {option}
                   </option>
                 )
               )}
@@ -220,7 +331,7 @@ export default function LeadDetails({
 
           </section>
 
-          {/* CONTACT INFORMATION */}
+          {/* CONTACT */}
 
           <section>
 
@@ -239,8 +350,6 @@ export default function LeadDetails({
                 label="Phone"
                 value={lead.phone}
               />
-
-              {/* EMAIL */}
 
               <div>
 
@@ -262,8 +371,6 @@ export default function LeadDetails({
                 )}
 
               </div>
-
-              {/* WEBSITE */}
 
               <div>
 
@@ -295,6 +402,88 @@ export default function LeadDetails({
               </div>
 
             </div>
+
+          </section>
+
+          {/* NOTES */}
+
+          <section>
+
+            <div className="mb-3 flex items-center justify-between">
+
+              <h3 className="text-sm font-semibold text-slate-900">
+                Notes
+              </h3>
+
+              <span className="text-xs text-slate-400">
+                Internal
+              </span>
+
+            </div>
+
+            <textarea
+              value={notes}
+              onChange={(event) =>
+                setNotes(
+                  event.target.value
+                )
+              }
+              placeholder="Add notes about this lead, conversations, requirements, objections..."
+              rows={5}
+              className="w-full resize-none rounded-xl border border-slate-200 p-4 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-400"
+            />
+
+          </section>
+
+          {/* FOLLOW-UP */}
+
+          <section>
+
+            <h3 className="mb-3 text-sm font-semibold text-slate-900">
+              Follow-up
+            </h3>
+
+            <input
+              type="date"
+              value={followUpDate}
+              onChange={(event) =>
+                setFollowUpDate(
+                  event.target.value
+                )
+              }
+              className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-slate-400"
+            />
+
+          </section>
+
+          {/* SAVE DETAILS */}
+
+          <section>
+
+            <button
+              type="button"
+              onClick={() =>
+                void handleSaveDetails()
+              }
+              disabled={savingDetails}
+              className="w-full rounded-lg bg-slate-900 px-4 py-3 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {savingDetails
+                ? "Saving..."
+                : "Save Notes & Follow-up"}
+            </button>
+
+            {detailsMessage && (
+              <p className="mt-2 text-center text-xs text-green-600">
+                {detailsMessage}
+              </p>
+            )}
+
+            {detailsError && (
+              <p className="mt-2 text-center text-xs text-red-500">
+                {detailsError}
+              </p>
+            )}
 
           </section>
 
